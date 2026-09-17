@@ -1,16 +1,91 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>My Portfolio</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maithreya G. — Portfolio</title>
+<style>
+  :root {
+    --ink: #17171a;
+    --muted: #6a6c73;
+    --rule: #ddd;
+    --bg: #fdfdfb;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", Times, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17.5px/1.7 var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 64px 24px 96px; }
+
+  h1 {
+    font-size: 2.6rem;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+  }
+  .byline { color: var(--muted); font-size: .95rem; font-style: italic; margin: 0 0 44px; }
+
+  h2 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 48px 0 6px;
+  }
+  .course { color: var(--muted); font-size: .95rem; font-style: italic; margin: 0 0 20px; }
+
+  ol.projects { list-style: none; margin: 0; padding: 0; }
+  ol.projects li {
+    border-top: 1px solid var(--rule);
+    padding: 20px 0;
+    display: grid;
+    grid-template-columns: 4.5rem 1fr;
+    gap: 0 18px;
+    align-items: baseline;
+  }
+  ol.projects li:last-child { border-bottom: 1px solid var(--rule); }
+  .num { color: var(--muted); font-size: .9rem; font-variant-numeric: tabular-nums; }
+  .title { font-size: 1.12rem; margin: 0; }
+  .title a { color: #7a2b1d; text-decoration: none; }
+  .title a:hover { text-decoration: underline; }
+  .blurb { grid-column: 2; color: var(--muted); font-size: .95rem; margin: 4px 0 0; }
+  @media (max-width: 560px) {
+    ol.projects li { grid-template-columns: 1fr; }
+    .blurb { grid-column: 1; }
+  }
+</style>
 </head>
 <body>
-    <h1>Welcome to My CS180 Portfolio!</h1>
-    <a href="./1/index.html">Project 1</a>
+<div class="wrap">
+
+<h1>Maithreya G.</h1>
+<p class="byline">Computer science at UC Berkeley. Coursework and project writeups.</p>
+
+<h2>CS180 Projects</h2>
+<p class="course">Intro to Computer Vision and Computational Photography, Fall 2026.</p>
+
+<ol class="projects">
+  <li>
+    <span class="num">Project 1</span>
+    <p class="title"><a href="./1/index.html">Colorizing the Prokudin-Gorskii Photo Collection</a></p>
+    <p class="blurb">Splitting century-old glass plate scans into their blue, green, and red
+    exposures and aligning them back into color photographs, with a coarse-to-fine image pyramid
+    for the full-resolution plates.</p>
+  </li>
+  <!-- Add the next project as another <li> with the same three lines:
+  <li>
+    <span class="num">Project 2</span>
+    <p class="title"><a href="./2/index.html">Title</a></p>
+    <p class="blurb">One or two lines on what it does.</p>
+  </li>
+  -->
+</ol>
+
+</div>
 </body>
 </html>

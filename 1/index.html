@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project 1: Colorizing the Prokudin-Gorskii Collection</title>
+<style>
+  :root {
+    --ink: #17171a;
+    --muted: #6a6c73;
+    --rule: #ddd;
+    --bg: #fdfdfb;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", Times, serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17.5px/1.7 var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 64px 24px 96px; }
+
+  h1 {
+    font-size: 2.6rem;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+  }
+  .byline { color: var(--muted); font-size: .95rem; font-style: italic; margin: 0 0 40px; }
+  .byline a { color: var(--muted); }
+
+  h2 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 56px 0 10px;
+  }
+  h3 { font-size: 1.05rem; font-weight: 600; margin: 34px 0 8px; }
+  p { margin: 14px 0; }
+  a { color: #7a2b1d; }
+  em { font-style: italic; }
+  code { font-family: var(--mono); font-size: .85em; background: #f1f0ec; padding: 1px 5px; border-radius: 3px; }
+  pre {
+    font-family: var(--mono); font-size: .82rem; line-height: 1.55;
+    background: #f5f4f0; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 14px 16px; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+
+  figure { margin: 22px 0; }
+  figure img { width: 100%; height: auto; display: block; border: 1px solid var(--rule); }
+  figcaption { font-size: .82rem; color: var(--muted); margin-top: 7px; line-height: 1.45; }
+  figcaption .name { color: var(--ink); }
+  figcaption .offset { font-family: var(--mono); font-size: .76rem; }
+
+  .grid { display: grid; gap: 22px; margin: 24px 0; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid figure { margin: 0; }
+  @media (max-width: 680px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  ol.steps { margin: 18px 0; padding-left: 1.3em; }
+  ol.steps li { margin: 10px 0; padding-left: 4px; }
+
+  .eq {
+    background: #f5f4f0; border-left: 2px solid #c9c6bd;
+    padding: 14px 18px; margin: 18px 0;
+  }
+  .eq pre {
+    background: none; border: 0; border-radius: 0; padding: 0; margin: 0;
+    font-family: var(--mono); font-size: .84rem; line-height: 1.55;
+    overflow-x: auto;
+  }
+  .eq .where {
+    display: block; font-family: var(--serif); font-size: .82rem;
+    color: var(--muted); margin-top: 10px; line-height: 1.55;
+  }
+  .note {
+    font-size: .92rem; color: var(--muted);
+    border-left: 2px solid var(--rule); padding: 2px 0 2px 16px; margin: 20px 0;
+  }
+
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; margin: 24px 0; }
+  .ba .tag {
+    display: block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 7px; font-family: var(--mono);
+  }
+  @media (max-width: 680px) { .ba { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Colorizing the Prokudin-Gorskii Photo Collection</h1>
+<p class="byline">CS180 &middot; Project 1 &middot; Maithreya G. &middot; <a href="../index.html">back to portfolio</a></p>
+
+<p>Prokudin-Gorskii photographed the Russian Empire in color a decade before color film was
+practical: each exposure was shot three times, through a blue, a green, and a red filter, onto one
+glass plate. Recovering the photograph means cutting the scan into its three frames and undoing
+the camera's shift between exposures. Every scan is converted to floating point first, so 8-bit
+JPEGs and 16-bit TIFFs behave identically, then split into thirds of height
+<code>floor(H/3)</code>, in the order blue, green, red from top to bottom. Blue stays fixed and the other two are
+aligned to it. Offsets are applied with <code>np.roll</code>, a circular shift that wraps the
+displaced rows and columns to the far edge, and every comparison is scored on the interior alone,
+with 10% of the height and width trimmed from each side so that plate borders and margin notes
+can't drive the match. A brute-force search handles the small scans; the full-size TIFFs need an
+image pyramid. Offsets are written <strong>(dy, dx)</strong>, rows then columns, relative to
+blue.</p>
+
+<p>Two details apply to every image on this page. The matching score is <strong>normalized
+cross-correlation</strong>, and it is computed on <strong>gradient-magnitude edge maps</strong>
+instead of raw pixels. I explain both in the next section, and the Emir plate at the bottom shows
+why the second one is needed.</p>
+
+<h2>Single-scale alignment</h2>
+
+<p>The single-scale search is exhaustive. For each candidate offset <code>(dy, dx)</code> within
+&plusmn;15 pixels in both directions, which is 31 &times; 31 = 961 candidates, I roll the moving
+frame by that offset, score it against the fixed blue frame, and keep the highest-scoring one. The
+search itself is simple, so most of the work is in choosing the score.</p>
+
+<h3>Step 1: choosing a score, L2 vs. NCC</h3>
+
+<p>The obvious score is the L2 norm, the sum of squared differences between the rolled frame
+<em>I</em> and the reference <em>R</em>, summed over the cropped interior <em>C</em>:</p>
+
+<div class="eq">
+<pre>L2(dy, dx)  =  Σ  [ I(y-dy, x-dx) - R(y, x) ]²
+           (y,x) ∈ C</pre>
+<span class="where">Minimized over offsets. The index shift follows <code>np.roll</code>'s
+convention, where rolling by +dy moves content down.</span>
+</div>
+
+<p>L2 measures agreement in <em>brightness</em>. It is smallest when the two frames hold the same
+pixel values, which is not the same as holding the same structures. The frames come from different
+color filters, so a surface that is bright through the blue filter can be dark through the red one.
+This mismatch shows up at every candidate offset, and it is often larger than the difference
+between a correct and an incorrect alignment, so it hides the signal the search needs.</p>
+
+<p>Normalized cross-correlation avoids this. Flatten both patches into vectors <em>a</em> and
+<em>b</em>, subtract each one's mean, and take the cosine of the angle between them:</p>
+
+<div class="eq">
+<pre>a' = a - mean(a)          b' = b - mean(b)
+
+                    a' · b'
+NCC(dy, dx)  =  ───────────────
+                  |a'| · |b'|</pre>
+<span class="where">Maximized over offsets. Subtracting the mean cancels a brightness
+offset between the two filters, and dividing by the norms cancels a contrast scale factor. The
+result is the cosine of the angle between the two centered vectors, in [&minus;1, 1], so it
+measures whether the bright and dark regions of the two frames move together.</span>
+</div>
+
+<h3>Step 2: score edges, not pixels</h3>
+
+<p>NCC cancels an additive brightness shift and a multiplicative contrast factor, but it still
+fails when a region's brightness <em>order</em> flips between filters. Something bright in blue and
+dark in red inverts the correlation rather than just offsetting it. To avoid this, each frame is
+replaced by its gradient magnitude before any scoring happens:</p>
+
+<div class="eq">
+<pre>gy, gx  =  np.gradient(I)
+
+E       =  sqrt( gy&sup2; + gx&sup2; )</pre>
+<span class="where">An edge sits in the same place in all three frames regardless of how
+each filter renders the brightness on either side of it, so the edge maps are what the three
+exposures agree on.</span>
+</div>
+
+<p>The order of these two operations matters. The gradient is taken on the full frame and the 10%
+border crop is applied afterward, so the one-sided differences NumPy computes at the frame boundary
+get discarded before they can affect the score.</p>
+
+<p>Every offset reported on this page, from both the single-scale search and the pyramid, is
+therefore the argmax of NCC over cropped edge maps. Running the same search on raw pixels instead
+produces the Emir failure shown at the bottom of the page.</p>
+
+<h3>Results</h3>
+
+<div class="grid grid-3">
+  <figure>
+    <img src="images/cathedral_align_single_scale.jpg" alt="cathedral, single-scale alignment">
+    <figcaption><span class="name">cathedral.jpg</span><br><span class="offset">G (5, 2) &middot; R (12, 3)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/monastery_align_single_scale.jpg" alt="monastery, single-scale alignment">
+    <figcaption><span class="name">monastery.jpg</span><br><span class="offset">G (&minus;3, 2) &middot; R (3, 2)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/tobolsk_align_single_scale.jpg" alt="tobolsk, single-scale alignment">
+    <figcaption><span class="name">tobolsk.jpg</span><br><span class="offset">G (3, 3) &middot; R (6, 3)</span></figcaption>
+  </figure>
+</div>
+
+<h2>Multi-scale alignment</h2>
+
+<p>The TIFFs are about ten times larger per side, and their displacements grow with them: melons
+moves its red frame 177 pixels, well outside a ±15 window. Widening the window doesn't help, since
+its cost grows as the square of its radius while each candidate now scores a hundred times as many
+pixels.</p>
+
+<p>Instead of widening the window, the pyramid shrinks the displacement until it fits the window
+we already have. The routine is recursive, and each call does four things:</p>
+
+<ol class="steps">
+  <li><strong>Base case.</strong> If the frame's shorter side is at most 100 pixels, run the
+  exhaustive &plusmn;15 search from above and return its answer. At this size a 177-pixel
+  displacement has become a few pixels, so &plusmn;15 is wide enough.</li>
+  <li><strong>Downsample.</strong> Otherwise halve both the moving frame and the reference with
+  <code>rescale(&hellip;, 0.5, anti_aliasing=True)</code>. Anti-aliasing is important here, since
+  decimating without it folds high-frequency detail into false low-frequency structure, and the
+  coarse levels are where the search is most easily misled.</li>
+  <li><strong>Recurse, then rescale the estimate.</strong> Align the half-size pair by calling
+  itself, then double the offset it returns. A displacement of <em>d</em> at half scale is
+  <em>2d</em> here.</li>
+  <li><strong>Refine.</strong> That doubled estimate is correct to within the rounding it picked up
+  on the way down, so search only <code>&plusmn;2</code> around it, which is 25 candidates, and
+  return the best.</li>
+</ol>
+
+<p>This keeps the cost down. The 961-candidate window runs exactly once, at the coarsest level
+where the images are tiny, and every level above it costs 25 comparisons. Five halvings take
+melons' 177-pixel red displacement down to about 5 pixels
+(177 / 2<sup>5</sup> &asymp; 5.5), well inside &plusmn;15.</p>
+
+<p>On the three small JPEGs the pyramid reproduces the brute-force answers. Cathedral and
+monastery come out byte-for-byte identical to the single-scale images above, so those pairs are the
+same file. Only tobolsk differs, by one pixel in green, (3,&nbsp;3) against (3,&nbsp;2), which is
+invisible in the output. Every level of the pyramid uses the same NCC-on-edge-maps score described
+in the previous section.</p>
+
+<div class="grid grid-3">
+  <figure>
+    <img src="images/cathedral_align_pyramid.jpg" alt="cathedral">
+    <figcaption><span class="name">cathedral</span><br><span class="offset">G (5, 2) &middot; R (12, 3)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/church_align_pyramid.jpg" alt="church">
+    <figcaption><span class="name">church</span><br><span class="offset">G (25, 4) &middot; R (58, &minus;4)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/emir_align_pyramid.jpg" alt="emir">
+    <figcaption><span class="name">emir</span><br><span class="offset">G (49, 24) &middot; R (107, 40)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/harvesters_align_pyramid.jpg" alt="harvesters">
+    <figcaption><span class="name">harvesters</span><br><span class="offset">G (60, 17) &middot; R (124, 14)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/icon_align_pyramid.jpg" alt="icon">
+    <figcaption><span class="name">icon</span><br><span class="offset">G (42, 17) &middot; R (90, 23)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/ilemselga_align_pyramid.jpg" alt="ilemselga">
+    <figcaption><span class="name">ilemselga</span><br><span class="offset">G (40, 7) &middot; R (131, 11)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/melons_align_pyramid.jpg" alt="melons">
+    <figcaption><span class="name">melons</span><br><span class="offset">G (80, 10) &middot; R (177, 13)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/monastery_align_pyramid.jpg" alt="monastery">
+    <figcaption><span class="name">monastery</span><br><span class="offset">G (&minus;3, 2) &middot; R (3, 2)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/religous_painting_align_pyramid.jpg" alt="religous painting">
+    <figcaption><span class="name">religous_painting</span><br><span class="offset">G (30, 6) &middot; R (70, 6)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/self_portrait_align_pyramid.jpg" alt="self portrait">
+    <figcaption><span class="name">self_portrait</span><br><span class="offset">G (78, 29) &middot; R (175, 37)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/siren_align_pyramid.jpg" alt="siren">
+    <figcaption><span class="name">siren</span><br><span class="offset">G (49, &minus;6) &middot; R (96, &minus;24)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/three_generations_align_pyramid.jpg" alt="three generations">
+    <figcaption><span class="name">three_generations</span><br><span class="offset">G (54, 12) &middot; R (111, 9)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/tobolsk_align_pyramid.jpg" alt="tobolsk">
+    <figcaption><span class="name">tobolsk</span><br><span class="offset">G (3, 2) &middot; R (6, 3)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/wharf_align_pyramid.jpg" alt="wharf">
+    <figcaption><span class="name">wharf</span><br><span class="offset">G (15, &minus;7) &middot; R (83, &minus;16)</span></figcaption>
+  </figure>
+</div>
+
+<h3>Three more from the collection</h3>
+
+<p>Three plates I picked from the Library of Congress Prokudin-Gorskii collection and ran through
+the same pyramid without changes. All three are small JPEG scans, so their displacements are small
+and the pyramid bottoms out after one or two halvings. Each title links to its catalog record:
+<a href="https://www.loc.gov/item/2018679064/">Kurmy</a>,
+<a href="https://www.loc.gov/item/2018681256/">four people seated on a carpet</a>, and
+<a href="https://www.loc.gov/item/2018681180/">man with camel loaded with packs</a>.</p>
+
+<div class="grid grid-3">
+  <figure>
+    <img src="images/kurmy_align_pyramid.jpg" alt="kurmy">
+    <figcaption><span class="name"><a href="https://www.loc.gov/item/2018679064/">kurmy</a></span><br><span class="offset">G (2, &minus;2) &middot; R (12, &minus;4)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/four_people_carpet_align_pyramid.jpg" alt="four people on a carpet">
+    <figcaption><span class="name"><a href="https://www.loc.gov/item/2018681256/">four_people_carpet</a></span><br><span class="offset">G (4, &minus;1) &middot; R (8, &minus;4)</span></figcaption>
+  </figure>
+  <figure>
+    <img src="images/man_with_camel_align_pyramid.jpg" alt="man with camel">
+    <figcaption><span class="name"><a href="https://www.loc.gov/item/2018681180/">man_with_camel</a></span><br><span class="offset">G (2, 2) &middot; R (8, 4)</span></figcaption>
+  </figure>
+</div>
+
+<h2>Failure case: Emir</h2>
+
+<p>Emir is the plate that motivates the edge map from Step 2. Running the same pyramid on raw
+pixels instead of edge maps, with the same NCC, the same window and the same recursion, and only
+the gradient step removed, fails badly.</p>
+
+<p>His robe is saturated blue, the brightest object in the blue frame and nearly the darkest in
+the red one. This is the case NCC cannot handle. Mean subtraction and normalization deal with a
+frame that is uniformly brighter or more contrasty, but here the brightness <em>ordering</em> is
+inverted over the largest object in the picture, so the correlation goes negative at the offset
+where the robe actually lines up. The search then prefers an offset that puts the robe somewhere
+else. The red offset lands at (118,&nbsp;&minus;542) and the Emir appears twice.</p>
+
+<p>Scoring <code>sqrt(gy&sup2; + gx&sup2;)</code> removes the inversion. The gradient discards the
+absolute brightness on either side of a boundary and keeps only the fact that a boundary is there,
+so the outline of the robe sits in the same place in all three exposures no matter which filter
+renders it light or dark. The red offset moves to (107,&nbsp;40) and the image aligns
+correctly.</p>
+
+<p class="note">Emir is the only plate where this makes a large difference, but I use the edge map
+for every image rather than switching it on for this one. It costs one <code>np.gradient</code>
+call per frame and did not make any other result worse.</p>
+
+<div class="ba">
+  <figure>
+    <span class="tag">Raw pixels</span>
+    <img src="images/emir_failed.jpg" alt="emir, misaligned, with a ghosted second figure">
+    <figcaption><span class="offset">G (49, 24) &middot; R (118, &minus;542)</span></figcaption>
+  </figure>
+  <figure>
+    <span class="tag">Edge maps</span>
+    <img src="images/emir_align_pyramid.jpg" alt="emir, correctly aligned">
+    <figcaption><span class="offset">G (49, 24) &middot; R (107, 40)</span></figcaption>
+  </figure>
+</div>
+
+</div>
+</body>
+</html>
