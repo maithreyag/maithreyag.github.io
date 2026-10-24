@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project 3A: Exploring the Power of Flow Models</title>
+<style>
+  :root {
+    --ink: #17171a;
+    --muted: #6a6c73;
+    --rule: #ddd;
+    --bg: #fdfdfb;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", Times, serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17.5px/1.7 var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 64px 24px 96px; }
+
+  h1 {
+    font-size: 2.6rem;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+  }
+  .byline { color: var(--muted); font-size: .95rem; font-style: italic; margin: 0 0 40px; }
+  .byline a { color: var(--muted); }
+
+  h2 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 56px 0 10px;
+  }
+  h3 { font-size: 1.05rem; font-weight: 600; margin: 34px 0 8px; }
+  p { margin: 14px 0; }
+  a { color: #7a2b1d; }
+  em { font-style: italic; }
+  code { font-family: var(--mono); font-size: .85em; background: #f1f0ec; padding: 1px 5px; border-radius: 3px; }
+  pre {
+    font-family: var(--mono); font-size: .82rem; line-height: 1.55;
+    background: #f5f4f0; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 14px 16px; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+
+  figure { margin: 22px 0; }
+  figure img { width: 100%; height: auto; display: block; border: 1px solid var(--rule); }
+  figure.narrow img { max-width: 520px; margin: 0 auto; }
+  figure.small img { max-width: 260px; margin: 0 auto; }
+  figcaption { font-size: .82rem; color: var(--muted); margin-top: 7px; line-height: 1.45; }
+  figcaption .name { color: var(--ink); }
+  figcaption .offset { font-family: var(--mono); font-size: .76rem; }
+
+  .grid { display: grid; gap: 22px; margin: 24px 0; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid figure { margin: 0; }
+  @media (max-width: 680px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .eq {
+    background: #f5f4f0; border-left: 2px solid #c9c6bd;
+    padding: 14px 18px; margin: 18px 0;
+  }
+  .eq pre {
+    background: none; border: 0; border-radius: 0; padding: 0; margin: 0;
+    font-family: var(--mono); font-size: .84rem; line-height: 1.55;
+    overflow-x: auto;
+  }
+  .eq .where {
+    display: block; font-family: var(--serif); font-size: .82rem;
+    color: var(--muted); margin-top: 10px; line-height: 1.55;
+  }
+  .note {
+    font-size: .92rem; color: var(--muted);
+    border-left: 2px solid var(--rule); padding: 2px 0 2px 16px; margin: 20px 0;
+  }
+
+  .thumb { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .thumb img { width: 64px; height: 64px; border: 1px solid var(--rule); }
+  .thumb span { font-size: .82rem; color: var(--muted); }
+
+  table.times { border-collapse: collapse; margin: 22px 0; font-size: .92rem; width: 100%; }
+  table.times th, table.times td { padding: 6px 12px; border-bottom: 1px solid var(--rule); text-align: right; }
+  table.times th:first-child, table.times td:first-child { text-align: left; }
+  table.times th { font-weight: 600; }
+  table.times td { font-family: var(--mono); font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Exploring the Power of Flow Models</h1>
+<p class="byline">CS180 &middot; Project 3A &middot; Maithreya G. &middot; <a href="../3b/index.html">Part B</a> &middot; <a href="../index.html">back to portfolio</a></p>
+
+<p>This project uses a pretrained text-to-image flow model, PixNerd, to denoise, generate and edit
+images. No training is involved. A flow model learns a <em>velocity</em>: given a noisy image and a
+time t, it predicts which direction to move to get closer to a clean image. Here t&nbsp;=&nbsp;0 is
+pure Gaussian noise and t&nbsp;=&nbsp;1 is a clean image. Part 1 looks at what that prediction does,
+first in one step and then in many small ones. Part 2 adds classifier-free guidance, and Part 3 uses
+the same sampler for editing, visual anagrams and hybrid images.</p>
+
+<p>All images are 512&nbsp;&times;&nbsp;512 with RGB values in [&minus;1, 1]. Unless stated
+otherwise, the prompt is <code>"a high quality photo"</code>, the Euler step size is
+h&nbsp;=&nbsp;0.02, and noise comes from a seeded generator starting at seed 180.</p>
+
+<h2>Part 1.1: Constructing noisy training inputs</h2>
+
+<p>A noisy training input is a straight-line mix between a noise sample &epsilon; and a clean image
+x<sub>1</sub>:</p>
+
+<div class="eq">
+<pre>x_t  =  (1 − t) · ε  +  t · x₁          ε ~ N(0, I)</pre>
+<span class="where">At t = 0 this returns the noise exactly, and at t = 1 the image. Along the line the
+velocity is constant, dx<sub>t</sub>/dt = x₁ − ε, and that is the target the model is trained to
+predict.</span>
+</div>
+
+<pre><code>def interpolate(image, noise, t):
+    return (1 - t) * noise + t * image</code></pre>
+
+<p>I sample one &epsilon; and reuse it for every t, so the three noisy images below differ only in
+how much of the photo is mixed in. The same image, noise and noisy tensors are reused through
+Part 1.5.</p>
+
+<figure>
+  <img src="images/p3a_forward.jpg" alt="original and noisy images at t = 0.25, 0.5, 0.75">
+  <figcaption><span class="name">jimi.jpeg</span> &middot; original, then <span class="offset">t = 0.25, 0.5, 0.75</span></figcaption>
+</figure>
+
+<h2>Part 1.2: Classical denoising</h2>
+
+<p>As a baseline without any learning, I first divide by t to undo the dimming in x<sub>t</sub>,
+then apply a Gaussian blur, with &sigma; = 8, 4 and 1 for t = 0.25, 0.5 and 0.75.</p>
+
+<figure class="narrow">
+  <img src="images/p3a_blur.jpg" alt="noisy input and best Gaussian blur at each t">
+  <figcaption>rows: <span class="offset">t = 0.25, 0.5, 0.75</span> &middot; <span class="offset">&sigma; = 8, 4, 1</span></figcaption>
+</figure>
+
+<p>The noisier inputs use a larger &sigma;, and a large blur takes the detail away
+along with the noise. At t&nbsp;=&nbsp;0.25 the result is just colored blobs in the rough shape of
+a person. At t&nbsp;=&nbsp;0.75, &sigma;&nbsp;=&nbsp;1 is enough and the result is decent but soft.
+Noise and fine detail are both high frequencies, so a blur cannot remove one and keep the other.</p>
+
+<h2>Part 1.3: One-step denoising</h2>
+
+<p>The model predicts the velocity v&#770; at (x<sub>t</sub>, t). The remaining distance to
+t&nbsp;=&nbsp;1 is 1&nbsp;&minus;&nbsp;t, so a single jump along that velocity gives an estimate of
+the clean image:</p>
+
+<div class="eq">
+<pre>x̂₁  =  x_t  +  (1 − t) · v_θ(x_t, t, c)</pre>
+</div>
+
+<figure>
+  <img src="images/p3a_one_step.jpg" alt="original, noisy input and one-step estimate at each t">
+  <figcaption>rows: <span class="offset">t = 0.25, 0.5, 0.75</span> &middot; original, noisy input, one-step estimate</figcaption>
+</figure>
+
+<p>Every estimate is clean, unlike the blur. How faithful it is depends on t. At
+t&nbsp;=&nbsp;0.75 it is nearly identical to the original. At t&nbsp;=&nbsp;0.25 the model keeps the
+layout (a guitarist at a mic stand) but invents a different person: a different face, no headband,
+plainer clothes. There is too little of the photo left to recover, so the model fills in a
+plausible guess.</p>
+
+<h2>Part 1.4: Visualizing velocity</h2>
+
+<p>Each panel below shows the update the model makes in that single jump, (1&nbsp;&minus;&nbsp;t)v&#770;, next
+to the update that would recover the original exactly. Using the saved noise, the true velocity is
+v<sub>gt</sub>&nbsp;=&nbsp;x<sub>1</sub>&nbsp;&minus;&nbsp;&epsilon;, so the true update is
+x<sub>1</sub>&nbsp;&minus;&nbsp;x<sub>t</sub>. The error map is the RMS over RGB of the difference at
+each pixel.</p>
+
+<pre><code>v_pred = predict_velocity(x_t, t, condition)
+v_gt = clean_image - epsilon
+error = torch.sqrt((((1 - t) * (v_pred - v_gt)) ** 2).mean(dim=1))</code></pre>
+
+<figure class="small">
+  <img src="images/p3a_original.jpg" alt="original image">
+  <figcaption><span class="name">original</span></figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_velocity.jpg" alt="noisy image, predicted update, ground-truth update and error map at each t">
+  <figcaption>rows: <span class="offset">t = 0.25, 0.5, 0.75</span> &middot; updates share one symmetric RGB scale with zero at middle gray &middot; error maps share one linear scale</figcaption>
+</figure>
+
+<p>Both updates look like a faded, noisy copy of the photo, since they move the image toward
+x<sub>1</sub> and away from &epsilon;. The error sits on edges and in the detailed parts of the
+image, such as the face, the guitar and the mic stands, not in the flat background. It shrinks
+quickly as t grows. At t&nbsp;=&nbsp;0.25 the predicted update is missing the headband and the
+pattern on the shirt, the same details the one-step estimate got wrong. By t&nbsp;=&nbsp;0.75 the
+error map is almost empty.</p>
+
+<h2>Part 1.5: Iterative denoising with Euler sampling</h2>
+
+<p>Instead of one big jump, Euler sampling takes many small steps and asks the model for a new
+velocity at each one. When a step would go past t&nbsp;=&nbsp;1, it is shortened to end there
+exactly.</p>
+
+<div class="eq">
+<pre>x_{t+h}  =  x_t  +  h · v(x_t, t)</pre>
+</div>
+
+<pre><code>def euler_sample(x_start, t_start, step_size, velocity):
+    states = [(t_start, x_start.clone())]
+    while t_start &lt; 1:
+        if t_start + step_size &gt; 1:
+            step_size = 1 - t_start
+        x_start = x_start + step_size * velocity(x_start, t_start)
+        t_start = t_start + step_size
+        states.append((t_start, x_start.clone()))
+    return x_start, states</code></pre>
+
+<p>Starting from the saved t&nbsp;=&nbsp;0.5 input, that is 25 updates:</p>
+
+<figure>
+  <img src="images/p3a_euler_trajectory.jpg" alt="Euler trajectory from t = 0.5 to 1">
+  <figcaption>start, every fifth update, final &middot; <span class="offset">t = 0.50, 0.60, 0.70, 0.80, 0.90, 1.00</span></figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_comparison.jpg" alt="original, blur, one-step and Euler results from t = 0.5">
+  <figcaption>all from the same t = 0.5 input &middot; original, Gaussian blur, one step, Euler</figcaption>
+</figure>
+
+<table class="times">
+  <tr><th>method (from t = 0.5)</th><th>MSE to original</th></tr>
+  <tr><td>Gaussian blur</td><td>0.0349</td></tr>
+  <tr><td>one step</td><td>0.0099</td></tr>
+  <tr><td>Euler, 25 steps</td><td>0.0117</td></tr>
+</table>
+
+<p>Both model-based results are far better than the blur. Euler looks the sharpest, with crisper
+fabric texture and cymbal edges, yet its MSE is slightly higher than the one-step result. A single
+jump lands near the <em>average</em> of all clean images that could explain the input. That average
+is a little soft, and MSE rewards it. Taking small steps commits to one specific sharp image, which
+looks more real, but wherever its invented detail differs from the true photo, MSE counts it as
+error.</p>
+
+<h2>Part 1.6: Generating images from noise</h2>
+
+<p>Starting at t&nbsp;=&nbsp;0 from pure noise, with 50 Euler steps, the sampler generates an
+image from nothing:</p>
+
+<figure>
+  <img src="images/p3a_samples.jpg" alt="five samples from noise">
+  <figcaption><span class="offset">seeds 180&ndash;184</span> &middot; prompt "a high quality photo", no guidance</figcaption>
+</figure>
+
+<p>The generic prompt strongly favors people: all five samples are portraits against a plain
+backdrop. Without guidance the prompt only loosely steers each sample, so the results range
+from realistic portraits (seeds 182 and 184) to looser, more abstract faces (seeds 180 and 183).</p>
+
+<h2>Part 2.1: Classifier-free guidance</h2>
+
+<p>Classifier-free guidance runs the model twice, once with the prompt and once with an empty
+prompt, and pushes the velocity further in the direction the prompt adds:</p>
+
+<div class="eq">
+<pre>v_cfg  =  v_c  +  w · (v_c − v_u)</pre>
+<span class="where">v<sub>c</sub> uses the prompt and v<sub>u</sub> uses <code>""</code>. w = 0 gives the
+plain conditional velocity. The samples below use w = 7.</span>
+</div>
+
+<pre><code>def cfg_velocity(x, t, condition, w, predict_velocity, null_condition=''):
+    v_c = predict_velocity(x, t, condition)
+    v_u = predict_velocity(x, t, null_condition)
+    return v_c + w * (v_c - v_u)</code></pre>
+
+<figure>
+  <img src="images/p3a_cfg_samples.jpg" alt="five CFG samples with the same seeds">
+  <figcaption><span class="offset">seeds 180&ndash;184, w = 7</span> &middot; same initial noise as Part 1.6</figcaption>
+</figure>
+
+<p>With guidance, every sample is a clean, well-lit studio portrait, including
+seeds 180 and 183. The noise still decides the overall layout: seed 182 keeps its pose
+with a hand at the cheek. The trade-off is variety. The five images now share nearly the same
+framing and style.</p>
+
+<h2>Part 3.1: Image-to-image editing</h2>
+
+<p>To edit an image, I noise it to some starting time with the same interpolation as in Part 1.1,
+then run the guided sampler from there to t&nbsp;=&nbsp;1. The lower the starting time, the more
+noise is added and the more the model is free to change.</p>
+
+<pre><code>def edit(image, noise, t_start, condition, predict_velocity, w=7, step_size=0.02):
+    x_t = interpolate(image, noise, t_start)
+    v_func = lambda x, t: cfg_velocity(x, t, condition, w, predict_velocity)
+    denoised, _ = euler_sample(x_t, t_start, step_size, v_func)
+    return denoised</code></pre>
+
+<figure>
+  <img src="images/p3a_edit_campanile.jpg" alt="campanile edits">
+  <figcaption><span class="name">campanile.jpg</span> &middot; starting times <span class="offset">0.02, 0.04, 0.06, 0.10, 0.14, 0.25, 0.50</span></figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_edit_jimi.jpg" alt="jimi edits">
+  <figcaption><span class="name">jimi.jpeg</span> &middot; same starting times</figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_edit_david.jpg" alt="david edits">
+  <figcaption><span class="name">david.jpeg</span> &middot; same starting times</figcaption>
+</figure>
+
+<p>The results follow the same pattern for every image. From 0.02 to 0.06 the output is a new
+image that keeps only the overall colors. Since the prompt says nothing specific, those are often
+generic stock-photo scenes: a portrait, or a hand holding a phone. By 0.10 to 0.14 the layout
+comes back: the tower stands in the same place against the same sky, and David reappears in a dark
+shirt under blue light. By 0.25 the subject is clearly recognizable, and at 0.50 the output is
+almost the original, slightly cleaned up.</p>
+
+<h3>Web image and hand drawings</h3>
+
+<figure>
+  <img src="images/p3a_edit_web.jpg" alt="web image edits">
+  <figcaption><span class="name">abraxas.jpg</span> (album cover from the web) &middot; same starting times</figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_edit_drawing_1.jpg" alt="dragon drawing edits">
+  <figcaption><span class="name">drawing 1</span>, a dragon &middot; same starting times</figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_edit_drawing_2.jpg" alt="tree drawing edits">
+  <figcaption><span class="name">drawing 2</span>, a tree &middot; same starting times</figcaption>
+</figure>
+
+<p>The drawings are where editing is most useful: a rough sketch becomes a photo with the same
+shape and colors. At 0.06 the cartoon tree becomes a realistic tree with the same silhouette, and
+at 0.10 the green dragon turns into a sprig of real leaves. From 0.25 up, both stay recognizably
+drawings, because by then the flat colors and black outlines are already settled. The album cover
+is a dense collage, so at low starting times the model reinterprets it as ordinary photos. By 0.25
+the collage style returns, with the red angel kept in place.</p>
+
+<h2>Part 3.2: Text-guided image editing</h2>
+
+<p>This is the same procedure with a prompt of my own in place of "a high quality photo". Now the
+low starting times move toward the prompt instead of toward a generic photo.</p>
+
+<figure>
+  <img src="images/p3a_text_campanile.jpg" alt="campanile edited toward a pencil">
+  <figcaption><span class="name">campanile.jpg</span> &middot; "a photograph of a large pencil"</figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_text_jimi.jpg" alt="jimi edited toward a man holding a rifle">
+  <figcaption><span class="name">jimi.jpeg</span> &middot; "a picture of a guy holding a rifle"</figcaption>
+</figure>
+
+<figure>
+  <img src="images/p3a_text_david.jpg" alt="david edited toward a man carrying a child">
+  <figcaption><span class="name">david.jpeg</span> &middot; "a capture of a man carrying his child"</figcaption>
+</figure>
+
+<p>Each prompt keeps the shape of its subject: the tower is tall and thin like a pencil, and a
+guitar is held roughly like a rifle. The most interesting results are in the middle starting
+times, where both the prompt and the image show. At 0.10 to 0.14 the Campanile becomes a pencil
+with wood grain and a graphite tip, standing in the original scene. At 0.25 Jimi holds a rifle in
+his original pose and outfit. At 0.10 to 0.14 David's photo becomes a man seen from behind carrying
+a child, under the same blue stage light.</p>
+
+<h2>Part 3.3: Visual anagrams</h2>
+
+<p>A visual anagram looks like one thing upright and another upside down. At every step I compute
+the guided velocity for prompt 1 on the image, and for prompt 2 on the image rotated 180&deg;. I
+rotate the second velocity back and average the two:</p>
+
+<div class="eq">
+<pre>v₁  =  CFG(x_t, t, p₁)
+v₂  =  flip( CFG( flip(x_t), t, p₂ ) )
+v   =  (v₁ + v₂) / 2</pre>
+<span class="where">flip rotates the image 180&deg; (both spatial axes).</span>
+</div>
+
+<div class="grid grid-2">
+  <figure>
+    <img src="images/p3a_anagram_0.jpg" alt="goat / countryside farm anagram">
+    <figcaption>upright: "a painting of a goat" &middot; flipped: "a painting of a countryside farm"</figcaption>
+  </figure>
+  <figure>
+    <img src="images/p3a_anagram_1.jpg" alt="clown / gloomy cave anagram">
+    <figcaption>upright: "a vintage photo of clown" &middot; flipped: "a vintage photo of a gloomy cave"</figcaption>
+  </figure>
+</div>
+
+<p>Upright, the first is a goat's head. Flipped, its white beard becomes a cloudy sky, and its
+horns and ears turn into a barn and animals in a field. In the second, the clown's green hair and
+ruffled collar become the arch of a dark cave mouth when flipped. The two prompts in each pair share a
+medium and a palette, so the same brushstrokes and lighting serve both subjects.</p>
+
+<h2>Part 3.4: Hybrid images</h2>
+
+<p>This is the same idea as Project 2's hybrids, but applied while the image is being generated.
+At every step, the low frequencies of the velocity come from one prompt and the high frequencies
+from another. Up close you see the high-frequency prompt; from a distance, or when the image is
+small, only the low-frequency one is left.</p>
+
+<div class="eq">
+<pre>v  =  lowpass( CFG(x_t, t, p_far) )  +  highpass( CFG(x_t, t, p_close) )
+
+highpass(v)  =  v − lowpass(v)</pre>
+<span class="where">The low-pass is a Gaussian blur with &sigma; = 16 and kernel size 265.</span>
+</div>
+
+<div class="grid grid-2">
+  <figure>
+    <img src="images/p3a_hybrid_0.jpg" alt="pirate ship / mallard duck hybrid">
+    <figcaption>close: "a lithograph of a pirate ship" &middot; far: "a lithograph of a mallard duck"</figcaption>
+    <div class="thumb"><img src="images/p3a_hybrid_0_small.png" alt="pirate ship / duck hybrid at 64 px"><span>at 64 &times; 64</span></div>
+  </figure>
+  <figure>
+    <img src="images/p3a_hybrid_1.jpg" alt="burning forest / bandit face hybrid">
+    <figcaption>close: "a lithograph of a burning forest" &middot; far: "a lithograph of a bandit's face"</figcaption>
+    <div class="thumb"><img src="images/p3a_hybrid_1_small.png" alt="burning forest / bandit hybrid at 64 px"><span>at 64 &times; 64</span></div>
+  </figure>
+</div>
+
+<p>Up close, the fine line work carries the image: the ship's rigging and sails, and the
+branches and flames of the forest. Shrinking the image removes that detail, leaving the broad
+light-and-dark layout that the far prompt controls. A lithograph style suits this, since its line
+work is almost entirely high frequency.</p>
+
+</div>
+</body>
+</html>
